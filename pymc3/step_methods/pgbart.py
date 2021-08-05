@@ -15,6 +15,7 @@
 import logging
 
 import numpy as np
+from scipy.stats import triang
 
 from theano import function as theano_function
 
@@ -79,7 +80,7 @@ class PGBART(ArrayStepShared):
         shared = make_shared_replacements(vars, model)
         self.likelihood_logp = logp([model.datalogpt], vars, shared)
         self.init_leaf_nodes = self.bart.initial_value_leaf_nodes
-        self.init_likelihood = self.likelihood_logp(self.bart.inv_link(self.bart.sum_trees_output))
+        self.init_likelihood = self.likelihood_logp(self.bart.sum_trees_output)
         self.init_log_weight = self.init_likelihood - self.log_num_particles
         self.old_trees_particles_list = []
         for i in range(self.bart.m):
@@ -95,7 +96,6 @@ class PGBART(ArrayStepShared):
     def astep(self, _):
         bart = self.bart
 
-        inv_link = bart.inv_link
         variable_inclusion = np.zeros(bart.num_variates, dtype="int")
 
         if self.idx == bart.m:
@@ -106,8 +106,7 @@ class PGBART(ArrayStepShared):
                 break
             self.idx += 1
             tree = bart.trees[idx]
-            old_prediction = tree.predict_output()
-            bart.sum_trees_output -= old_prediction
+            sum_trees_output_noi = bart.sum_trees_output - tree.predict_output()
             # Generate an initial set of SMC particles
             # at the end of the algorithm we return one of these particles as the new tree
             particles = self.init_particles(tree.tree_id)
@@ -122,7 +121,7 @@ class PGBART(ArrayStepShared):
                 # are updated additively as the ratio of the new and old log_likelihoods
                 for p in particles:
                     new_likelihood = self.likelihood_logp(
-                        inv_link(bart.sum_trees_output + p.tree.predict_output())
+                        sum_trees_output_noi + p.tree.predict_output()
                     )
                     p.log_weight += new_likelihood - p.old_likelihood_logp
                     p.old_likelihood_logp = new_likelihood
@@ -152,7 +151,7 @@ class PGBART(ArrayStepShared):
             new_tree = np.random.choice(particles, p=normalized_weights)
             self.old_trees_particles_list[tree.tree_id] = new_tree
             bart.trees[idx] = new_tree.tree
-            bart.sum_trees_output += new_tree.tree.predict_output()
+            bart.sum_trees_output = sum_trees_output_noi + new_tree.tree.predict_output()
 
             if not self.tune:
                 self.iter += 1
@@ -164,7 +163,7 @@ class PGBART(ArrayStepShared):
                     variable_inclusion[index] += 1
 
         stats = {"variable_inclusion": variable_inclusion}
-        return inv_link(bart.sum_trees_output), [stats]
+        return bart.sum_trees_output, [stats]
 
     @staticmethod
     def competence(var, has_grad):
@@ -201,7 +200,7 @@ class PGBART(ArrayStepShared):
         Initialize particles
         """
         prev_tree = self.get_old_tree_particle(tree_id, 0)
-        likelihood = self.likelihood_logp(self.bart.inv_link(prev_tree.tree.predict_output()))
+        likelihood = self.likelihood_logp(prev_tree.tree.predict_output())
         prev_tree.old_likelihood_logp = likelihood
         prev_tree.log_weight = likelihood - self.log_num_particles
         particles = [prev_tree]
@@ -214,7 +213,7 @@ class PGBART(ArrayStepShared):
         )
 
         prior_prob = self.bart.prior_prob_leaf_node
-        for _ in range(1, self.num_particles):
+        for _ in range(1, self.num_particles): 
             particles.append(
                 ParticleTree(new_tree, prior_prob, self.init_log_weight, self.init_likelihood)
             )

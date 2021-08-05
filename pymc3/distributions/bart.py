@@ -30,8 +30,8 @@ class BaseBART(NoDistribution):
         Y,
         m=50,
         alpha=0.25,
+        k=2,
         split_prior=None,
-        inv_link=None,
         jitter=False,
         *args,
         **kwargs,
@@ -64,26 +64,13 @@ class BaseBART(NoDistribution):
         self.m = m
         self.alpha = alpha
 
-        if inv_link is None:
-            self.inv_link = self.link = lambda x: x
-        elif isinstance(inv_link, str):
-            if inv_link == "logistic":
-                self.inv_link = expit
-                # The link function is just a rough approximation in order to allow the PGBART
-                # sampler to propose reasonable values for the leaf nodes. The regularizing term
-                # 2 * self.m ** 0.5 is inspired by Chipman's DOI: 10.1214/09-AOAS285
-                self.link = lambda x: (x - 0.5) * 2 * self.m ** 0.5
-            elif inv_link == "exp":
-                self.inv_link = np.exp
-                self.link = np.log
-                self.Y[self.Y == 0] += 0.0001
-            else:
-                raise ValueError("Accepted strings are 'logistic' or 'exp'")
+        self.init_mean = self.Y.mean()
+        # if data is binary
+        if np.all(np.unique(self.Y) == [0, 1]):
+            self.mu_std = 6/(k*self.m**0.5)
+        # maybe we need to check for count data
         else:
-            self.inv_link, self.link = inv_link
-
-        self.init_mean = self.link(self.Y.mean())
-        self.Y_un = self.link(self.Y)
+            self.mu_std = self.Y.std()/(k*self.m**0.5)
 
         self.num_observations = X.shape[0]
         self.num_variates = X.shape[1]
@@ -93,7 +80,9 @@ class BaseBART(NoDistribution):
         self.trees = self.init_list_of_trees()
         self.all_trees = []
         self.mean = fast_mean()
+        self.normal = NormalSampler()
         self.prior_prob_leaf_node = compute_prior_probability(alpha)
+
 
     def preprocess_XY(self, X, Y):
         if isinstance(Y, (Series, DataFrame)):
@@ -190,15 +179,13 @@ class BaseBART(NoDistribution):
 
         return left_node_idx_data_points, right_node_idx_data_points
 
-    def get_residuals(self):
-        """Compute the residuals."""
-        R_j = self.Y_un - self.sum_trees_output
-        return R_j
-
     def draw_leaf_value(self, idx_data_points):
         """Draw the residual mean."""
-        R_j = self.get_residuals()[idx_data_points]
-        draw = self.mean(R_j)
+        Y_pred_idx = self.sum_trees_output[idx_data_points]
+        mu_mean = self.mean(Y_pred_idx)/self.m
+        # add cache of precomputed normal values
+        draw = self.normal.random() * self.mu_std + mu_mean
+
         return draw
 
     def predict(self, X_new):
@@ -211,7 +198,7 @@ class BaseBART(NoDistribution):
             for tree in trees_to_sum:
                 new_Y += [tree.predict_out_of_sample(x) for x in X_new]
             pred[draw] = new_Y
-        return self.inv_link(pred)
+        return pred
 
 
 def compute_prior_probability(alpha):
@@ -262,6 +249,18 @@ def discrete_uniform_sampler(upper_value):
     """Draw from the uniform distribution with bounds [0, upper_value)."""
     return int(np.random.random() * upper_value)
 
+class NormalSampler:
+    def __init__(self):
+        self.size = 1000
+        self.cache = []
+
+    def random(self):
+        if not self.cache:
+            self.update()
+        return self.cache.pop()
+
+    def update(self):
+        self.cache = np.random.normal(loc=0.0, scale=1, size=self.size).tolist()
 
 class SampleSplittingVariable:
     def __init__(self, prior, num_variates):
@@ -305,21 +304,20 @@ class BART(BaseBART):
     alpha : float
         Control the prior probability over the depth of the trees. Even when it can takes values in
         the interval (0, 1), it is recommended to be in the interval (0, 0.5].
+    k : int
+        LALALA. Recomended to be between 1 and 3
     split_prior : array-like
         Each element of split_prior should be in the [0, 1] interval and the elements should sum
         to 1. Otherwise they will be normalized.
         Defaults to None, all variable have the same a prior probability
-    inv_link : str or tuple of functions
-        Inverse link function defaults to None, i.e. the identity function. Accepted strings are
-        ``logistic`` or ``exp``.
     jitter : bool
         Whether to jitter the X values or not. Defaults to False. When values of X are repeated,
         jittering X has the effect of increasing the number of effective spliting variables,
         otherwise it does not have any effect.
     """
 
-    def __init__(self, X, Y, m=50, alpha=0.25, split_prior=None, inv_link=None, jitter=False):
-        super().__init__(X, Y, m, alpha, split_prior, inv_link)
+    def __init__(self, X, Y, m=50, alpha=0.25, k=2, split_prior=None, jitter=False):
+        super().__init__(X, Y, m, alpha, k, split_prior, jitter)
 
     def _str_repr(self, name=None, dist=None, formatting="plain"):
         if dist is None:
