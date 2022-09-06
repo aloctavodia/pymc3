@@ -561,6 +561,6 @@ def test_interval_transform_raises():
 
 def test_discrete_trafo():
     with pm.Model():
-        with pytest.raises(ValueError) as err:
-            pm.Binomial("a", n=5, p=0.5, transform="log")
-        err.match("Transformations for discrete distributions")
+        msg = "log transformation cannot be used with discrete distribution"
+        with pytest.raises(ValueError, match=msg):
+            pm.Binomial("a", n=5, p=0.5, transform=tr.log)

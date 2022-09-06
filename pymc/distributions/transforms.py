@@ -12,6 +12,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 from functools import singledispatch
+from typing import Callable, Optional, Tuple
 
 import aesara.tensor as at
 import numpy as np
@@ -24,11 +25,13 @@ from aeppl.transforms import (
     RVTransform,
     SimplexTransform,
 )
+from aesara import Variable
 from aesara.graph import Op
 from aesara.tensor import TensorVariable
 
 __all__ = [
     "RVTransform",
+    "DiscreteRVTransform",
     "simplex",
     "logodds",
     "Interval",
@@ -37,6 +40,7 @@ __all__ = [
     "log",
     "sum_to_1",
     "circular",
+    "absolute",
     "CholeskyCovPacked",
     "Chain",
 ]
@@ -290,3 +294,62 @@ circular = CircularTransform()
 circular.__doc__ = """
 Instantiation of :class:`aeppl.transforms.CircularTransform`
 for use in the ``transform`` argument of a random variable."""
+
+
+class DiscreteRVTransform(RVTransform):
+    """Class of transforms that can be used for discrete variables"""
+
+    name = "discrete_transform"
+
+
+class DiscreteInterval(DiscreteRVTransform):
+    name = "dinterval"
+
+    def __init__(
+        self, args_fn: Callable[..., Tuple[Optional[TensorVariable], Optional[TensorVariable]]]
+    ):
+        """
+
+        Parameters
+        ==========
+        args_fn
+            Function that expects inputs of RandomVariable and returns the lower
+            and upper bounds for the modulo transformation. If one of these is
+            None, the RV is considered to be unbounded on the respective edge.
+        """
+        self.args_fn = args_fn
+
+    def forward(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
+        return value
+
+    def backward(self, value: TensorVariable, *inputs: Variable) -> TensorVariable:
+        lower, upper = self.args_fn(*inputs)
+
+        if lower is not None and upper is not None:
+            # This is probably less than ideal, as it will simply wrap around values
+            # between lower and upper, but most bounded distributions are likely to
+            # have very different masses near the two bounds.
+            return lower + at.mod((value - lower), (upper - lower + 1))
+        elif lower is not None:
+            return lower + at.abs(value - lower)
+        elif upper is not None:
+            raise NotImplementedError()
+        else:
+            raise ValueError("Both edges of DiscreteIntervalTransform cannot be None")
+
+    def log_jac_det(self, value: TensorVariable, *inputs) -> TensorVariable:
+        lower, upper = self.args_fn(*inputs)
+
+        if lower is not None and upper is not None:
+            return at.zeros_like(value)
+        elif lower is not None:
+            # The absolute transform in self.backwards underrepresents lower, so we
+            # double its probability
+            return at.switch(at.eq(value, lower), at.log(2.0), 0)
+        elif upper is not None:
+            raise NotImplementedError()
+        else:
+            raise ValueError("Both edges of DiscreteIntervalTransform cannot be None")
+
+
+absolute = DiscreteInterval(args_fn=(lambda *args: (at.constant(0), None)))
