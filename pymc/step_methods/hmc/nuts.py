@@ -210,7 +210,7 @@ class NUTS(BaseHMC):
         dist = getattr(var.owner, "op", None)
         if var.dtype in continuous_types and has_grad:
             return Competence.PREFERRED
-        return Competence.INCOMPATIBLE
+        return Competence.PREFERRED
 
     def warnings(self):
         warnings = super().warnings()

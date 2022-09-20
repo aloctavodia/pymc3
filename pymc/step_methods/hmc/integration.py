@@ -33,16 +33,16 @@ class CpuLeapfrogIntegrator:
         self._potential = potential
         self._logp_dlogp_func = logp_dlogp_func
         self._dtype = self._logp_dlogp_func.dtype
-        if self._potential.dtype != self._dtype:
-            raise ValueError(
-                "dtypes of potential (%s) and logp function (%s)"
-                "don't match." % (self._potential.dtype, self._dtype)
-            )
+        # if self._potential.dtype != self._dtype:
+        #     raise ValueError(
+        #         "dtypes of potential (%s) and logp function (%s)"
+        #         "don't match." % (self._potential.dtype, self._dtype)
+        #     )
 
     def compute_state(self, q, p):
         """Compute Hamiltonian functions using a position and momentum."""
-        if q.data.dtype != self._dtype or p.data.dtype != self._dtype:
-            raise ValueError("Invalid dtype. Must be %s" % self._dtype)
+        # if q.data.dtype != self._dtype or p.data.dtype != self._dtype:
+        #    raise ValueError("Invalid dtype. Must be %s" % self._dtype)
 
         logp, dlogp = self._logp_dlogp_func(q)
 
@@ -87,7 +87,7 @@ class CpuLeapfrogIntegrator:
         axpy = linalg.blas.get_blas_funcs("axpy", dtype=self._dtype)
         pot = self._potential
 
-        q_new = state.q.data.copy()
+        q_new = state.q.data.copy().astype(float)
         p_new = state.p.data.copy()
         v_new = np.empty_like(q_new)
         q_new_grad = np.empty_like(q_new)

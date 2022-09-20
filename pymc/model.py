@@ -348,17 +348,17 @@ class ValueGradFunction:
             cost = cost + self._weights[i] * val
 
         self._extra_are_set = False
-        for var in self._grad_vars:
-            if not np.can_cast(var.dtype, self.dtype, casting):
-                raise TypeError(
-                    f"Invalid dtype for variable {var.name}. Can not "
-                    f"cast to {self.dtype} with casting rule {casting}."
-                )
-            if not np.issubdtype(var.dtype, np.floating):
-                raise TypeError(
-                    f"Invalid dtype for variable {var.name}. Must be "
-                    f"floating point but is {var.dtype}."
-                )
+        # for var in self._grad_vars:
+        #     if not np.can_cast(var.dtype, self.dtype, casting):
+        #         raise TypeError(
+        #             f"Invalid dtype for variable {var.name}. Can not "
+        #             f"cast to {self.dtype} with casting rule {casting}."
+        #         )
+        #     if not np.issubdtype(var.dtype, np.floating):
+        #         raise TypeError(
+        #             f"Invalid dtype for variable {var.name}. Must be "
+        #             f"floating point but is {var.dtype}."
+        #         )
 
         givens = []
         self._extra_vars_shared = {}
@@ -622,11 +622,12 @@ class Model(WithMemoization, metaclass=ContextMeta):
             `alpha` can be changed using `ValueGradFunction.set_weights([alpha])`.
         """
         if grad_vars is None:
-            grad_vars = [self.rvs_to_values[v] for v in typefilter(self.free_RVs, continuous_types)]
-        else:
-            for i, var in enumerate(grad_vars):
-                if var.dtype not in continuous_types:
-                    raise ValueError(f"Can only compute the gradient of continuous types: {var}")
+            # grad_vars = [self.rvs_to_values[v] for v in typefilter(self.free_RVs, continuous_types)]
+            grad_vars = [self.rvs_to_values[v] for v in self.free_RVs]
+        # else:
+        # for i, var in enumerate(grad_vars):
+        # if var.dtype not in continuous_types:
+        #    raise ValueError(f"Can only compute the gradient of continuous types: {var}")
 
         if tempered:
             costs = [self.varlogp, self.datalogp]

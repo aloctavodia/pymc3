@@ -2467,8 +2467,8 @@ def init_nuts(
     vars = kwargs.get("vars", model.value_vars)
     if set(vars) != set(model.value_vars):
         raise ValueError("Must use init_nuts on all variables of a model.")
-    if not all_continuous(vars):
-        raise ValueError("init_nuts can only be used for models with continuous variables.")
+    # if not all_continuous(vars):
+    #    raise ValueError("init_nuts can only be used for models with continuous variables.")
 
     if not isinstance(init, str):
         raise TypeError("init must be a string.")
@@ -2599,7 +2599,7 @@ def init_nuts(
     else:
         raise ValueError(f"Unknown initializer: {init}.")
 
-    step = pm.NUTS(potential=potential, model=model, **kwargs)
+    step = pm.NUTS(potential=potential, model=model, vars=vars, **kwargs)
 
     # Filter deterministics from initial_points
     value_var_names = [var.name for var in model.value_vars]
