@@ -579,7 +579,7 @@ def assert_moment_is_expected(model, expected, check_finite_logp=True):
 
     assert moment.shape == expected.shape
     assert expected.shape == random_draw.shape
-    assert np.allclose(moment, expected)
+    assert np.allclose(moment, expected), f"{moment=}, {expected=}"
 
     if check_finite_logp:
         logp_moment = joint_logp(model["x"], at.constant(moment), transformed=False).eval()

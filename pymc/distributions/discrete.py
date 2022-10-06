@@ -17,6 +17,12 @@ import aesara.tensor as at
 import numpy as np
 
 from aesara.tensor.random.basic import (
+    BetaBinomialRV,
+    BinomialRV,
+    GeometricRV,
+    HyperGeometricRV,
+    NegBinomialRV,
+    PoissonRV,
     RandomVariable,
     bernoulli,
     betabinom,
@@ -46,6 +52,7 @@ from pymc.distributions.distribution import Discrete
 from pymc.distributions.logprob import logp
 from pymc.distributions.mixture import Mixture
 from pymc.distributions.shape_utils import rv_size_is_none
+from pymc.distributions.transforms import DiscreteInterval, _default_transform, absolute
 from pymc.math import sigmoid
 from pymc.vartypes import continuous_types
 
@@ -1898,3 +1905,42 @@ class OrderedProbit:
     @classmethod
     def dist(cls, *args, **kwargs):
         return _OrderedProbit.dist(*args, **kwargs)
+
+
+# Bernoulli and Categorical are not given a default transform because they have
+# specialized samplers that never propose invalid values
+@_default_transform.register(BinomialRV)
+@_default_transform.register(BetaBinomialRV)
+@_default_transform.register(DiscreteWeibullRV)
+@_default_transform.register(PoissonRV)
+@_default_transform.register(NegBinomialRV)
+def positive_discrete_transform(op, rv):
+    # These rvs have support [0, inf]
+    return absolute
+
+
+@_default_transform.register(GeometricRV)
+def geometric_discrete_transform(op, rv):
+    # Geometric support is [1, inf)
+    return DiscreteInterval(args_fn=(lambda *args: (at.constant(1), None)))
+
+
+@_default_transform.register(DiscreteUniformRV)
+def discrete_uniform_transform(op, rv):
+    # Uniform support is [lower, upper]
+    # arguments -2 and -1, are lower and upper
+    return DiscreteInterval(args_fn=(lambda *args: (args[-2], args[-1])))
+
+
+@_default_transform.register(HyperGeometricRV)
+def hypergeometric_transform(op, rv):
+    # Hypergeometric support is [max(0, n - N + k), min(k, n)]
+    def compute_bounds(*inputs):
+        good, bad, n = inputs[3:]
+        # Convert from Aesara to PyMC terminology
+        k, N = good, good + bad
+        lower = at.maximum(0, n - N + k)
+        upper = at.minimum(k, n)
+        return lower, upper
+
+    return DiscreteInterval(args_fn=compute_bounds)
