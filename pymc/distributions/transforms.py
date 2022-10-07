@@ -329,7 +329,12 @@ class DiscreteInterval(DiscreteRVTransform):
             # This is probably less than ideal, as it will simply wrap around values
             # between lower and upper, but most bounded distributions are likely to
             # have very different masses near the two bounds.
-            return lower + at.mod((value - lower), (upper - lower + 1))
+            # return at.switch((((value-lower) // (upper-lower+1)) % 2), 
+            # upper - (value - lower) % (upper - lower +1),
+            # lower + (value - lower) % (upper - lower +1))
+            f = at.mod(at.int_div(value-lower, upper-lower+1), 2)
+            a = (upper - at.mod(value - lower, upper - lower +1)) * f + (lower + at.mod(value - lower, upper - lower +1)) * (1-f)
+            return a 
         elif lower is not None:
             return lower + at.abs(value - lower)
         elif upper is not None:
